@@ -56,7 +56,7 @@ void printGrid() {
     }
 }
 
-// Funkcja oblicza odległość w lini prostej między punktem a celem
+// Funkcja oblicza odległość w lini prostej między punktem a celem (h / heutystka)
 double euklides(int x, int y, int i, int j) {
     return sqrt(pow(i - x, 2) + pow(j - y, 2));
 }
