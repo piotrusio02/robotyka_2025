@@ -1,0 +1,3 @@
+C:/Users/piter/Desktop/semestr V/elementy robotyki inteligentnej/Astar Piotr Piotrowski/cmake-build-debug/CMakeFiles/Astar_Piotr_Piotrowski.dir
+C:/Users/piter/Desktop/semestr V/elementy robotyki inteligentnej/Astar Piotr Piotrowski/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Users/piter/Desktop/semestr V/elementy robotyki inteligentnej/Astar Piotr Piotrowski/cmake-build-debug/CMakeFiles/rebuild_cache.dir
