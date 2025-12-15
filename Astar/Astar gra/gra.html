@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gra A* Pathfinder</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        h1 { margin-bottom: 10px; }
+        
+        .controls {
+            margin-bottom: 20px;
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 5px;
+            transition: background 0.3s;
+        }
+
+        button:hover { background-color: #2ecc71; }
+        button.clear { background-color: #c0392b; }
+        button.clear:hover { background-color: #e74c3c; }
+
+        #grid-container {
+            display: grid;
+            grid-template-columns: repeat(20, 30px);
+            grid-template-rows: repeat(20, 30px);
+            gap: 1px;
+            background-color: #7f8c8d;
+            border: 5px solid #34495e;
+        }
+
+        .cell {
+            width: 30px;
+            height: 30px;
+            background-color: #ecf0f1;
+            cursor: pointer;
+            transition: background-color 0.1s;
+        }
+
+        .cell:hover { background-color: #bdc3c7; }
+
+        /* Klasy stanów komórek */
+        .wall { background-color: #2c3e50 !important; } /* Ściana (5 w C++) */
+        .start { background-color: #27ae60 !important; } /* Start (A) */
+        .end { background-color: #c0392b !important; }   /* Koniec (B) */
+        .path { background-color: #3498db !important; }  /* Ścieżka */
+        .visited { background-color: #95a5a6; } /* Odwiedzone przez algorytm (opcjonalne) */
+
+        .info { margin-top: 10px; font-size: 14px; color: #bdc3c7; }
+    </style>
+</head>
+<body>
+
+    <h1>A* Maze Solver</h1>
+    
+    <div class="controls">
+        <p>Kliknij i przeciągnij, aby rysować ściany.</p>
+        <button onclick="calculatePath()">Szukaj Drogi (A*)</button>
+        <button class="clear" onclick="resetGrid()">Wyczyść Mapę</button>
+    </div>
+
+    <div id="grid-container"></div>
+    <div class="info" id="status">Status: Gotowy</div>
+
+    <script>
+        // Konfiguracja zgodna z kodem C++
+        const ROWS = 20;
+        const COLS = 20;
+        let grid = [];
+        let isMouseDown = false;
+
+        // Pozycje startowe (StartField i EndField z C++)
+        let startNode = { x: 0, y: 0 };
+        let endNode = { x: 19, y: 19 };
+
+        // Struktura komórki (odpowiednik struct Field z C++)
+        class Node {
+            constructor(x, y, isWall = false) {
+                this.x = x;
+                this.y = y;
+                this.isWall = isWall; // To odpowiada wartości 5 w C++
+                this.g = 0;
+                this.h = 0;
+                this.f = 0;
+                this.parent = null;
+            }
+        }
+
+        // Inicjalizacja Gridu (HTML + JS Array)
+        function initGrid() {
+            const container = document.getElementById('grid-container');
+            container.innerHTML = '';
+            grid = [];
+
+            for (let y = 0; y < ROWS; y++) {
+                let rowArray = [];
+                for (let x = 0; x < COLS; x++) {
+                    let cellDiv = document.createElement('div');
+                    cellDiv.classList.add('cell');
+                    cellDiv.dataset.x = x;
+                    cellDiv.dataset.y = y;
+
+                    // Obsługa myszy
+                    cellDiv.addEventListener('mousedown', () => { isMouseDown = true; toggleWall(x, y); });
+                    cellDiv.addEventListener('mouseenter', () => { if (isMouseDown) toggleWall(x, y); });
+                    cellDiv.addEventListener('mouseup', () => { isMouseDown = false; });
+
+                    container.appendChild(cellDiv);
+                    rowArray.push(new Node(x, y));
+                }
+                grid.push(rowArray);
+            }
+            
+            // Ustawienie startu i końca
+            updateVisuals();
+        }
+
+        // Funkcja rysowania ścian
+        function toggleWall(x, y) {
+            // Nie zamazuj startu i końca
+            if ((x === startNode.x && y === startNode.y) || (x === endNode.x && y === endNode.y)) return;
+
+            grid[y][x].isWall = !grid[y][x].isWall;
+            
+            // Odśwież widok
+            const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+            if (grid[y][x].isWall) {
+                cell.classList.add('wall');
+                cell.classList.remove('path');
+            } else {
+                cell.classList.remove('wall');
+            }
+        }
+
+        // Reset
+        function resetGrid() {
+            initGrid();
+            document.getElementById('status').innerText = "Status: Mapa wyczyszczona";
+        }
+
+        // Odświeżanie kolorów specjalnych
+        function updateVisuals() {
+            // Czyść stare oznaczenia start/koniec
+            document.querySelectorAll('.start, .end').forEach(el => {
+                el.classList.remove('start');
+                el.classList.remove('end');
+            });
+
+            // Dodaj nowe
+            let startEl = document.querySelector(`.cell[data-x="${startNode.x}"][data-y="${startNode.y}"]`);
+            let endEl = document.querySelector(`.cell[data-x="${endNode.x}"][data-y="${endNode.y}"]`);
+            
+            if(startEl) startEl.classList.add('start');
+            if(endEl) endEl.classList.add('end');
+        }
+
+        // --- ALGORYTM A* (Przetłumaczony z C++) ---
+        
+        function calculatePath() {
+            // Wyczyść poprzednią ścieżkę wizualnie
+            document.querySelectorAll('.path').forEach(el => el.classList.remove('path'));
+            document.querySelectorAll('.visited').forEach(el => el.classList.remove('visited'));
+
+            // Resetuj parametry node'ów (jak w C++ za każdym razem tworzone były nowe tablice)
+            for(let y=0; y<ROWS; y++) {
+                for(let x=0; x<COLS; x++) {
+                    grid[y][x].g = 0;
+                    grid[y][x].h = 0;
+                    grid[y][x].f = 0;
+                    grid[y][x].parent = null;
+                }
+            }
+
+            let openList = [];
+            let closedList = [];
+
+            let start = grid[startNode.y][startNode.x];
+            let end = grid[endNode.y][endNode.x];
+
+            // Inicjalizacja startu
+            start.g = 0;
+            // Euklides tak jak w C++: sqrt(pow(i - x, 2) + pow(j - y, 2))
+            start.h = Math.sqrt(Math.pow(start.x - end.x, 2) + Math.pow(start.y - end.y, 2));
+            start.f = start.g + start.h;
+            
+            openList.push(start);
+
+            let found = false;
+            let current = null;
+
+            // Ruchy: Góra, Dół, Lewo, Prawo (z tablicy moves w C++)
+            const moves = [
+                {x: 0, y: -1},
+                {x: 0, y: 1},
+                {x: -1, y: 0},
+                {x: 1, y: 0}
+            ];
+
+            while (openList.length > 0) {
+                // Znajdź node z najmniejszym f (sortowanie zamiast pętli szukającej min)
+                openList.sort((a, b) => a.f - b.f);
+                current = openList.shift(); // Pobierz pierwszy i usuń (pop_front)
+                closedList.push(current);
+
+                // Wizualizacja odwiedzonych (opcjonalne)
+                if (current !== start && current !== end) {
+                    let cell = document.querySelector(`.cell[data-x="${current.x}"][data-y="${current.y}"]`);
+                    cell.classList.add('visited');
+                }
+
+                // Sprawdź czy dotarliśmy do celu
+                if (current.x === end.x && current.y === end.y) {
+                    found = true;
+                    break;
+                }
+
+                // Sprawdź sąsiadów
+                for (let k = 0; k < 4; k++) {
+                    let neighborX = current.x + moves[k].x;
+                    let neighborY = current.y + moves[k].y;
+
+                    // isPersible (czy w granicach i czy nie ściana)
+                    if (neighborX >= 0 && neighborX < COLS && 
+                        neighborY >= 0 && neighborY < ROWS && 
+                        !grid[neighborY][neighborX].isWall) {
+
+                        let neighbor = grid[neighborY][neighborX];
+
+                        // Jeśli już w closedList, pomiń
+                        if (closedList.includes(neighbor)) continue;
+
+                        let tentativeG = current.g + 1; // Koszt ruchu to zawsze 1
+
+                        // Jeśli nie ma w openList LUB znaleziona droga jest krótsza
+                        let inOpenList = openList.includes(neighbor);
+                        if (!inOpenList || tentativeG < neighbor.g) {
+                            neighbor.parent = current;
+                            neighbor.g = tentativeG;
+                            neighbor.h = Math.sqrt(Math.pow(neighbor.x - end.x, 2) + Math.pow(neighbor.y - end.y, 2));
+                            neighbor.f = neighbor.g + neighbor.h;
+
+                            if (!inOpenList) {
+                                openList.push(neighbor);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (found) {
+                reconstructPath(current);
+                document.getElementById('status').innerText = "Status: Droga znaleziona!";
+            } else {
+                document.getElementById('status').innerText = "Status: Brak możliwej drogi!";
+                alert("Nie można dotrzeć do celu!");
+            }
+        }
+
+        // Odtwarzanie ścieżki (z parentów)
+        function reconstructPath(current) {
+            let temp = current;
+            while (temp.parent) {
+                // Nie koloruj startu i końca na niebiesko
+                if ((temp.x !== startNode.x || temp.y !== startNode.y) && 
+                    (temp.x !== endNode.x || temp.y !== endNode.y)) {
+                    
+                    let cell = document.querySelector(`.cell[data-x="${temp.x}"][data-y="${temp.y}"]`);
+                    cell.classList.remove('visited');
+                    cell.classList.add('path');
+                }
+                temp = temp.parent;
+            }
+        }
+
+        // Start globalny
+        document.body.addEventListener('mouseup', () => isMouseDown = false);
+        initGrid();
+
+    </script>
+</body>
+</html>
